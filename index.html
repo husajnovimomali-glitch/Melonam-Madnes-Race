@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>:MELONAM: Madnes Race</title>
+<style>
+body, html { margin:0; padding:0; overflow:hidden; font-family:sans-serif; background:black; }
+canvas { display:block; }
+#menu {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  background:#111; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+#menu h1 { font-size:2em; margin-bottom:20px; text-align:center; }
+.btn { background:#333; color:#fff; padding:10px 20px; margin:5px; cursor:pointer; border:none; font-size:1em; border-radius:5px; }
+.btn:hover { background:#555; }
+#submenu { margin-top:20px; }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>:MELONAM: Madnes Race</h1>
+  <p>Выберите машину:</p>
+  <div id="carSelect">
+    <button class="btn" data-car="car">Машина</button>
+    <button class="btn" data-car="tank">Танк</button>
+    <button class="btn" data-car="helicopter">Вертолет</button>
+    <button class="btn" data-car="ufo">НЛО</button>
+    <button class="btn" data-car="buggy">Багги</button>
+    <button class="btn" data-car="hover">Ховеркар</button>
+  </div>
+  <div id="submenu">
+    <p>Выберите локацию:</p>
+    <button class="btn" data-loc="0">Пустыня</button>
+    <button class="btn" data-loc="1">Луна</button>
+    <button class="btn" data-loc="2">Марс</button>
+    <button class="btn" data-loc="3">Горы</button>
+    <button class="btn" data-loc="4">Метрополис</button>
+  </div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+// Настройки canvas
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Игровые переменные
+let gameStarted=false, playerCar='car', locationIndex=0, speed=12;
+let roadOffset=0, obstacles=[], score=0, move=0;
+let abilityActive=false, abilityTimer=0, effects=[], bonuses=[];
+
+// Локации
+const locations = [
+  {name:'Пустыня', color:'#C19A6B', obstacles:['cactus','rock','wreck']},
+  {name:'Луна', color:'#AAA', obstacles:['crater','rock','alien']},
+  {name:'Марс', color:'#B22222', obstacles:['rock','crater','alien']},
+  {name:'Горы', color:'#555', obstacles:['tree','rock','boulder']},
+  {name:'Метрополис', color:'#333', obstacles:['car','truck','barrier']}
+];
+
+// Машины и способности
+const cars = {
+  car:{color:'blue', width:50, height:80, ability:'speedBoost', abilityDuration:60},
+  tank:{color:'green', width:60, height:100, ability:'destroy', abilityDuration:60},
+  helicopter:{color:'gray', width:80, height:40, ability:'fly', abilityDuration:120},
+  ufo:{color:'purple', width:70, height:50, ability:'teleport', abilityDuration:1},
+  buggy:{color:'orange', width:50, height:70, ability:'jump', abilityDuration:30},
+  hover:{color:'cyan', width:60, height:60, ability:'glide', abilityDuration:90}
+};
+
+// Изображения препятствий (заглушки)
+const obstacleImages = {};
+locations.flatMap(l=>l.obstacles).forEach(type=>{
+  let img = new Image();
+  img.src = 'https://dummyimage.com/40x40/ff0000/ffffff.png&text='+type;
+  obstacleImages[type] = img;
+});
+
+// Меню
+document.querySelectorAll('#carSelect .btn').forEach(b=>b.onclick=()=>{playerCar=b.dataset.car; checkStart();});
+document.querySelectorAll('#submenu .btn').forEach(b=>b.onclick=()=>{locationIndex=parseInt(b.dataset.loc); checkStart();});
+function checkStart(){ if(playerCar && locationIndex!==undefined){document.getElementById('menu').style.display='none'; gameStarted=true; spawnObstacles(); spawnBonuses(); requestAnimationFrame(gameLoop);} }
+
+// Управление
+document.addEventListener('touchstart', e=>{move=e.touches[0].clientX<canvas.width/2?-1:1;});
+document.addEventListener('touchend', e=>move=0);
+document.addEventListener('keydown', e=>{ if(e.key==='ArrowLeft') move=-1; if(e.key==='ArrowRight') move=1; if(e.key===' ') activateAbility();});
+document.addEventListener('keyup', e=>move=0);
+
+// Способности
+function activateAbility(){
+  abilityActive=true; abilityTimer=cars[playerCar].abilityDuration;
+  if(cars[playerCar].ability==='teleport'){ playerY-=200; effects.push({x:playerX+cars[playerCar].width/2,y:playerY+cars[playerCar].height/2,type:'flash',timer:15}); }
+}
+
+// Препятствия
+function spawnObstacles(){
+  obstacles=[];
+  for(let i=0;i<12;i++){
+    obstacles.push({x:Math.random()*(canvas.width-100)+50,y:-i*250,size:Math.random()*30+30,type:randomObstacle()});
+  }
+}
+function randomObstacle(){ const loc=locations[locationIndex]; return loc.obstacles[Math.floor(Math.random()*loc.obstacles.length)]; }
+
+// Бонусы
+function spawnBonuses(){
+  bonuses=[];
+  for(let i=0;i<5;i++){
+    bonuses.push({x:Math.random()*(canvas.width-100)+50, y:-Math.random()*2000, size:30, type:'boost'});
+  }
+}
+
+// Эффекты
+function drawEffects(){
+  for(let i=effects.length-1;i>=0;i--){
+    let e=effects[i];
+    if(e.type==='smoke'){ ctx.fillStyle='rgba(200,200,200,'+e.timer/20+')'; ctx.beginPath(); ctx.arc(e.x,e.y,e.timer,0,Math.PI*2); ctx.fill(); }
+    else if(e.type==='flash'){ ctx.fillStyle='rgba(255,255,255,'+e.timer/15+')'; ctx.beginPath(); ctx.arc(e.x,e.y,e.timer*4,0,Math.PI*2); ctx.fill(); }
+    e.timer--; if(e.timer<=0) effects.splice(i,1);
+  }
+}
+
+// Мини-карта
+function drawMiniMap(){
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.fillRect(canvas.width-150,10,140,100);
+  // игрок
+  ctx.fillStyle=cars[playerCar].color;
+  ctx.fillRect(canvas.width-150+playerX/canvas.width*140,10+playerY/canvas.height*100,10,10);
+  // препятствия
+  ctx.fillStyle='red';
+  obstacles.forEach(o=>ctx.fillRect(canvas.width-150+o.x/canvas.width*140,10+o.y/canvas.height*100,5,5));
+  // бонусы
+  ctx.fillStyle='yellow';
+  bonuses.forEach(b=>ctx.fillRect(canvas.width-150+b.x/canvas.width*140,10+b.y/canvas.height*100,5,5));
+}
+
+// Игровой цикл
+let playerX=canvas.width/2, playerY=canvas.height-150;
+function gameLoop(){
+  if(!gameStarted) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Дорога
+  roadOffset+=speed; if(roadOffset>60) roadOffset=0;
+  const roadWidth=canvas.width*0.6; const roadLeft=(canvas.width-roadWidth)/2; const roadRight=roadLeft+roadWidth;
+  ctx.fillStyle=locations[locationIndex].color; ctx.fillRect(roadLeft,0,roadWidth,canvas.height);
+  ctx.strokeStyle='white'; ctx.lineWidth=4;
+  for(let i=-1;i<canvas.height/60;i++){ ctx.beginPath(); ctx.moveTo(canvas.width/2,(i*60+roadOffset)); ctx.lineTo(canvas.width/2,(i*60+30+roadOffset)); ctx.stroke(); }
+
+  // Движение игрока
+  playerX+=move*15; if(playerX<roadLeft)playerX=roadLeft; if(playerX>roadRight-cars[playerCar].width)playerX=roadRight-cars[playerCar].width;
+  if(abilityActive){ abilityTimer--; if(abilityTimer<=0) abilityActive=false; }
+
+  // Эффекты способности
+  if(abilityActive){
+    if(cars[playerCar].ability==='speedBoost'){ effects.push({x:playerX+cars[playerCar].width/2,y:playerY+cars[playerCar].height,type:'smoke',timer:10}); }
+    if(cars[playerCar].ability==='jump'){ playerY=canvas.height-200; } else { playerY=canvas.height-150; }
+    if(cars[playerCar].ability==='glide'){ playerY=canvas.height-170; }
+  }
+
+  // Рисуем игрока
+  ctx.fillStyle=cars[playerCar].color; ctx.fillRect(playerX,playerY,cars[playerCar].width,cars[playerCar].height);
+
+  // Обновление препятствий
+  obstacles.forEach(obs=>{
+    obs.y+=speed*(abilityActive && cars[playerCar].ability==='speedBoost'?1.5:1);
+    ctx.drawImage(obstacleImages[obs.type], obs.x, obs.y, obs.size, obs.size);
+
+    // Столкновение
+    if(!abilityActive || (abilityActive && cars[playerCar].ability!=='fly' && cars[playerCar].ability!=='teleport')){
+      if(obs.y+obs.size>playerY && obs.y<playerY+cars[playerCar].height &&
+         obs.x+obs.size>playerX && obs.x<playerX+cars[playerCar].width){
+        if(cars[playerCar].ability==='destroy' && abilityActive){ obs.y=-100; effects.push({x:obs.x+obs.size/2,y:obs.y+obs.size/2,type:'flash',timer:10}); }
+        else { speed=0; ctx.fillStyle='white'; ctx.font='50px sans-serif'; ctx.fillText('GAME OVER',canvas.width/2-150,canvas.height/2); return; }
+      }
+    }
+    if(obs.y>canvas.height) obs.y=-100;
+  });
+
+  // Бонусы
+  bonuses.forEach(b=>{
+    b.y+=speed;
+    ctx.fillStyle='yellow'; ctx.fillRect(b.x,b.y,b.size,b.size);
+    if(b.y+ b.size>playerY && b.y<playerY+cars[playerCar].height &&
+       b.x+ b.size>playerX && b.x<playerX+cars[playerCar].width){ score+=100; b.y=-100; effects.push({x:b.x+15,y:b.y+15,type:'flash',timer:10}); }
+    if(b.y>canvas.height) b.y=-Math.random()*2000;
+  });
+
+  drawEffects();
+  drawMiniMap();
+
+  // Счет и инфо
+  score++; ctx.fillStyle='white'; ctx.font='20px sans-serif';
+  ctx.fillText('Score: '+score,20,30); ctx.fillText('Location: '+locations[locationIndex].name,20,60);
+  if(abilityActive) ctx.fillText('Ability ACTIVE: '+cars[playerCar].ability,20,90);
+
+  // Смена локации
+  if(score>0 && score%2000===0){ locationIndex=(locationIndex+1)%locations.length; spawnObstacles(); spawnBonuses(); }
+
+  requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
